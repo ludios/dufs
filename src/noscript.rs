@@ -1,3 +1,4 @@
+// Model-output: Claude Opus 5.5
 use crate::{
     server::{IndexData, PathItem, PathType, MAX_SUBPATHS_COUNT},
     utils::encode_uri,
@@ -88,16 +89,32 @@ fn format_size(size: u64, path_type: PathType) -> String {
         if size == 0 {
             return "0 B".to_string();
         }
-        const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
-        let i = (size as f64).log2() / 10.0;
-        let i = i.floor() as usize;
-
-        if i >= UNITS.len() {
-            // Handle extremely large numbers beyond Terabytes
-            return format!("{:.2} PB", size as f64 / 1024.0f64.powi(5));
+        const UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
+        let mut size = size as f64;
+        let mut i = 0;
+        // Move to the next unit while the value would print as 1000.00 or more.
+        while size >= 999.995 && i < UNITS.len() - 1 {
+            size /= 1000.0;
+            i += 1;
         }
+        format!("{size:.2} {}", UNITS[i])
+    }
+}
 
-        let size = size as f64 / 1024.0f64.powi(i as i32);
-        format!("{:.2} {}", size, UNITS[i])
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_size_moves_to_the_next_unit_at_1000() {
+        let file = |size| format_size(size, PathType::File);
+        assert_eq!(file(0), "0 B");
+        assert_eq!(file(999), "999.00 B");
+        assert_eq!(file(1000), "1.00 KB");
+        assert_eq!(file(999_994), "999.99 KB");
+        assert_eq!(file(999_995), "1.00 MB");
+        assert_eq!(file(1_048_575), "1.05 MB");
+        assert_eq!(file(999_995_000_000_000), "1.00 PB");
+        assert_eq!(file(2_500_000_000_000_000_000), "2500.00 PB");
     }
 }

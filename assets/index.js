@@ -1,3 +1,4 @@
+// Model-output: Claude Opus 5.5
 /**
  * @typedef {object} PathItem
  * @property {"Dir"|"SymlinkDir"|"File"|"SymlinkFile"} path_type
@@ -933,18 +934,16 @@ function formatDirSize(size) {
 }
 
 function formatFileSize(size) {
-  if (size == null) return [0, "B"];
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  if (size == 0) return [0, "B"];
-  const i = parseInt(Math.floor(Math.log(size) / Math.log(1024)));
-  const raw = size / Math.pow(1024, i);
-  let value;
-  if (i > 0 && raw < 999.95) {
-    value = Math.round(raw * 10) / 10;
-  } else {
-    value = Math.round(raw);
+  if (!size) return [0, "B"];
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  // Whole bytes, one decimal place in larger units.
+  const round = (value, i) => i == 0 ? Math.round(value) : Math.round(value * 10) / 10;
+  let i = 0;
+  while (round(size, i) >= 1000 && i < sizes.length - 1) {
+    size /= 1000;
+    i++;
   }
-  return [value, sizes[i]];
+  return [round(size, i), sizes[i]];
 }
 
 function formatDuration(seconds) {
