@@ -1,3 +1,4 @@
+// Model-output: Claude Opus 5.5
 #![allow(clippy::too_many_arguments)]
 
 use crate::auth::{www_authenticate, AccessPaths, AccessPerm};
@@ -1751,6 +1752,23 @@ fn res_multistatus(res: &mut Response, content: &str) {
     ));
 }
 
+/// ZIP entry options carrying `meta`'s mtime, permission bits and owner.
+///
+/// `meta` is the opened file's metadata, so a symlink contributes its target's
+/// attributes, the same file its content is read from.
+fn zip_entry_options(meta: &Metadata) -> WriterOptions {
+    #[cfg(unix)]
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    WriterOptions {
+        mtime: meta.modified().unwrap_or_else(|_| SystemTime::now()),
+        #[cfg(unix)]
+        permissions: Some(meta.permissions().mode() & 0o7777),
+        #[cfg(unix)]
+        uid_gid: Some((meta.uid(), meta.gid())),
+        ..WriterOptions::default()
+    }
+}
+
 async fn zip_dir<W: AsyncWrite + Unpin>(
     writer: &mut W,
     dir: &Path,
@@ -1783,8 +1801,8 @@ async fn zip_dir<W: AsyncWrite + Unpin>(
             Some(v) => v,
             None => continue,
         };
-        let options = WriterOptions::from_path(&zip_path).await?;
         let mut file = File::open(&zip_path).await?;
+        let options = zip_entry_options(&file.metadata().await?);
         let mut entry = zip.append_file(&filename, options).await?;
         io::copy(&mut file, &mut entry).await?;
         entry.close().await?;
