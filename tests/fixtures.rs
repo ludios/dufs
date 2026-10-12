@@ -1,8 +1,10 @@
+// Model-output: Claude Opus 5.5
 use assert_fs::fixture::TempDir;
 use assert_fs::prelude::*;
-use port_check::free_local_port;
 use reqwest::Url;
 use rstest::fixture;
+use socket2::{Domain, Socket, Type};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread::sleep;
@@ -118,6 +120,23 @@ pub fn tmpdir() -> TempDir {
         .unwrap();
 
     tmpdir
+}
+
+/// Asks the OS for a port that no socket on 127.0.0.1 is using.
+///
+/// The socket only binds and never listens: if it lands on a port another test
+/// has registered, that test's server can still bind and listen there, and the
+/// socket can't answer the server's readiness check in `wait_for_port`.
+fn free_local_port() -> Option<u16> {
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, None).ok()?;
+    // Linux only lets the server bind the port alongside this socket if both
+    // set SO_REUSEADDR (dufs does).
+    #[cfg(unix)]
+    socket.set_reuse_address(true).ok()?;
+    socket
+        .bind(&SocketAddr::from((Ipv4Addr::LOCALHOST, 0)).into())
+        .ok()?;
+    Some(socket.local_addr().ok()?.as_socket()?.port())
 }
 
 /// A port picked for a single test and kept out of circulation until dropped.
