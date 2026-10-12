@@ -1,3 +1,4 @@
+// Model-output: Claude Opus 5.5
 mod args;
 mod auth;
 mod http_logger;
@@ -45,10 +46,9 @@ async fn main() -> Result<()> {
         print_completions(*generator, &mut cmd);
         return Ok(());
     }
-    let mut args = Args::parse(matches)?;
+    let args = Args::parse(matches)?;
     logger::init(args.log_file.clone()).map_err(|e| anyhow!("Failed to init logger, {e}"))?;
-    let (new_addrs, print_addrs) = check_addrs(&args)?;
-    args.addrs = new_addrs;
+    let print_addrs = listening_addrs(&args)?;
     let running = Arc::new(AtomicBool::new(true));
     let listening = print_listening(&args, &print_addrs)?;
     let handles = serve(args, running.clone())?;
@@ -208,8 +208,9 @@ fn create_listener(addr: SocketAddr) -> Result<TcpListener> {
     Ok(listener)
 }
 
-fn check_addrs(args: &Args) -> Result<(Vec<BindAddr>, Vec<BindAddr>)> {
-    let mut new_addrs = vec![];
+/// The addresses to print as listening: each bind address, with an unspecified
+/// IP expanded to the interface addresses of its family.
+fn listening_addrs(args: &Args) -> Result<Vec<BindAddr>> {
     let mut print_addrs = vec![];
     let has_unspecified = args
         .addrs
@@ -221,7 +222,6 @@ fn check_addrs(args: &Args) -> Result<(Vec<BindAddr>, Vec<BindAddr>)> {
         (vec![], vec![])
     };
     for bind_addr in args.addrs.iter() {
-        new_addrs.push(bind_addr.clone());
         match bind_addr {
             BindAddr::IpAddr(ip) => match &ip {
                 IpAddr::V4(_) => {
@@ -240,14 +240,11 @@ fn check_addrs(args: &Args) -> Result<(Vec<BindAddr>, Vec<BindAddr>)> {
                 }
             },
             #[cfg(unix)]
-            _ => {
-                new_addrs.push(bind_addr.clone());
-                print_addrs.push(bind_addr.clone())
-            }
+            _ => print_addrs.push(bind_addr.clone()),
         }
     }
     print_addrs.sort_unstable();
-    Ok((new_addrs, print_addrs))
+    Ok(print_addrs)
 }
 
 fn interface_addrs() -> Result<(Vec<BindAddr>, Vec<BindAddr>)> {

@@ -1,3 +1,4 @@
+// Model-output: Claude Opus 5.5
 mod fixtures;
 
 use fixtures::{port, server, tmpdir, wait_for_port, Error, Port, TestServer};
@@ -80,5 +81,28 @@ fn validate_printed_urls(tmpdir: TempDir, port: Port, #[case] args: &[&str]) -> 
 
     child.kill()?;
 
+    Ok(())
+}
+
+/// An abstract socket name can only be bound once, so this fails if dufs binds
+/// a unix socket address twice.
+#[rstest]
+#[cfg(target_os = "linux")]
+fn bind_abstract_socket(tmpdir: TempDir) -> Result<(), Error> {
+    use std::io::{BufRead, BufReader};
+
+    let name = format!("@dufs-test-{}", std::process::id());
+    let mut child = Command::new(assert_cmd::cargo::cargo_bin!())
+        .arg(tmpdir.path())
+        .arg("-b")
+        .arg(&name)
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let mut line = String::new();
+    BufReader::new(child.stdout.take().unwrap()).read_line(&mut line)?;
+    child.kill()?;
+    child.wait()?;
+
+    assert_eq!(line.trim_end(), format!("Listening on {name}"));
     Ok(())
 }
